@@ -104,52 +104,75 @@ document.addEventListener("click", async (e) => {
 
     if (coin < price) throw new Error("Không đủ Coin. Hiện có " + coin + ", cần " + price + ".");
 
-const userSnap = await transaction.get(userRef);
+await db.runTransaction(async (transaction) => {
 
-const inventorySnap = await transaction.get(inventoryRef);
+    const userRef = db.collection("users").doc(username);
+
+    const inventoryRef = db.collection("inventory")
+        .doc(username)
+        .collection("items")
+        .doc(itemId);
 
 
-if (!userSnap.exists) {
-    throw new Error("Không tìm thấy người dùng.");
-}
+    // READ trước
+    const userSnap = await transaction.get(userRef);
 
-const userData = userSnap.data();
+    const inventorySnap = await transaction.get(inventoryRef);
 
-const currentCoin = Number(userData.coin || 0);
 
-if (currentCoin < price) {
-    throw new Error(
-        "Không đủ Coin. Hiện có " +
-        currentCoin +
-        ", cần " +
-        price
-    );
-}
+    if (!userSnap.exists) {
+        throw new Error("Không tìm thấy người dùng.");
+    }
 
-    if (inventorySnap.exists) {
+
+    const userData = userSnap.data();
+
+    const currentCoin = Number(userData.coin || 0);
+
+
+    if (currentCoin < price) {
+        throw new Error(
+            "Không đủ Coin. Hiện có " +
+            currentCoin +
+            ", cần " +
+            price
+        );
+    }
+
+
+    // WRITE sau
+
+    transaction.update(userRef,{
+        coin: currentCoin - price
+    });
+
+
+    if(inventorySnap.exists){
 
         const oldQuantity =
             Number(inventorySnap.data().quantity || 1);
 
-        transaction.update(inventoryRef, {
+        transaction.update(inventoryRef,{
             quantity: oldQuantity + 1
         });
 
-    } else {
 
-        transaction.set(inventoryRef, {
-            itemId: itemId,
-            name: item.name,
-            image: item.image,
-            type: item.type,
-            quantity: 1,
+    }else{
+
+        transaction.set(inventoryRef,{
+            itemId:itemId,
+            name:item.name,
+            image:item.image,
+            type:item.type,
+            quantity:1,
             receiveTime:
-                firebase.firestore.FieldValue.serverTimestamp()
+            firebase.firestore.FieldValue.serverTimestamp()
         });
 
     }
 
 });
+
 
 alert("🎉 Mua thành công!");
   } catch (e) {
