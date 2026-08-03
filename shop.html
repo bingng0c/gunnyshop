@@ -104,36 +104,27 @@ document.addEventListener("click", async (e) => {
 
     if (coin < price) throw new Error("Không đủ Coin. Hiện có " + coin + ", cần " + price + ".");
 
-   await db.runTransaction(async (transaction) => {
+const userSnap = await transaction.get(userRef);
 
-    const userRef = db.collection("users").doc(username);
+const inventorySnap = await transaction.get(inventoryRef);
 
-    const inventoryRef = db.collection("inventory")
-        .doc(username)
-        .collection("items")
-        .doc(itemId);
 
-    const userSnap = await transaction.get(userRef);
+if (!userSnap.exists) {
+    throw new Error("Không tìm thấy người dùng.");
+}
 
-    if (!userSnap.exists) {
-        throw new Error("Không tìm thấy người dùng.");
-    }
+const userData = userSnap.data();
 
-    const userData = userSnap.data();
+const currentCoin = Number(userData.coin || 0);
 
-    const currentCoin = Number(userData.coin || 0);
-
-    if (currentCoin < price) {
-        throw new Error("Không đủ Coin.");
-    }
-
-    // Trừ Coin
-    transaction.update(userRef, {
-        coin: currentCoin - price
-    });
-
-    // Kiểm tra vật phẩm đã có chưa
-    const inventorySnap = await transaction.get(inventoryRef);
+if (currentCoin < price) {
+    throw new Error(
+        "Không đủ Coin. Hiện có " +
+        currentCoin +
+        ", cần " +
+        price
+    );
+}
 
     if (inventorySnap.exists) {
 
