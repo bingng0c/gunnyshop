@@ -147,8 +147,7 @@ ${item.quantity || 1}
 </b>
 </p>
 
-
-<button>
+<button onclick="equipItem('${doc.id}')">
 TRANG BỊ
 </button>
 
@@ -176,7 +175,66 @@ box.innerHTML=
 
 }
 
+async function equipItem(itemId){
 
+const username =
+document.getElementById("username").value.trim();
+
+
+try{
+
+
+const itemDoc =
+await db.collection("inventory")
+.doc(username)
+.collection("items")
+.doc(itemId)
+.get();
+
+
+if(!itemDoc.exists){
+
+alert("Không tìm thấy vật phẩm");
+
+return;
+
+}
+
+
+const item=itemDoc.data();
+
+
+
+await db.collection("equipment")
+.doc(username)
+.set({
+
+itemId:itemId,
+
+name:item.name,
+
+image:item.image,
+
+type:item.type || "item",
+
+time:
+firebase.firestore.FieldValue.serverTimestamp()
+
+});
+
+
+alert("Đã trang bị "+item.name);
+
+
+
+}catch(e){
+
+alert(e.message);
+
+}
+
+
+}
 </script>
 
 
