@@ -104,17 +104,63 @@ document.addEventListener("click", async (e) => {
 
     if (coin < price) throw new Error("Không đủ Coin. Hiện có " + coin + ", cần " + price + ".");
 
-    await db.collection("orders").add({
-      username,
-      itemId,
-      itemName: String(item.name || ""),
-      image: String(item.image || ""),
-      type: String(item.type || ""),
-      price,
-      status: "pending",
-      time: firebase.firestore.FieldValue.serverTimestamp()
+   await db.runTransaction(async (transaction) => {
+
+    const userRef = db.collection("users").doc(username);
+
+    const inventoryRef = db.collection("inventory")
+        .doc(username)
+        .collection("items")
+        .doc(itemId);
+
+    const userSnap = await transaction.get(userRef);
+
+    if (!userSnap.exists) {
+        throw new Error("Không tìm thấy người dùng.");
+    }
+
+    const userData = userSnap.data();
+
+    const currentCoin = Number(userData.coin || 0);
+
+    if (currentCoin < price) {
+        throw new Error("Không đủ Coin.");
+    }
+
+    // Trừ Coin
+    transaction.update(userRef, {
+        coin: currentCoin - price
     });
-    alert("Đã gửi đơn mua thành công!");
+
+    // Kiểm tra vật phẩm đã có chưa
+    const inventorySnap = await transaction.get(inventoryRef);
+
+    if (inventorySnap.exists) {
+
+        const oldQuantity =
+            Number(inventorySnap.data().quantity || 1);
+
+        transaction.update(inventoryRef, {
+            quantity: oldQuantity + 1
+        });
+
+    } else {
+
+        transaction.set(inventoryRef, {
+            itemId: itemId,
+            name: item.name,
+            image: item.image,
+            type: item.type,
+            quantity: 1,
+            receiveTime:
+                firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+    }
+
+});
+
+alert("🎉 Mua thành công!");
   } catch (e) {
     alert(e.message || e);
   } finally {
