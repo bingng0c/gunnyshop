@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<title>Kho đồ</title>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;padding:20px;color:#222}
+.wrap{max-width:1100px;margin:auto}
+.card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+button{cursor:pointer;padding:9px 16px;border:0;border-radius:8px;background:#1976d2;color:#fff;font-weight:700}
+button:disabled{opacity:.6;cursor:not-allowed}
+input{padding:10px;border:1px solid #bbb;border-radius:8px;width:100%;box-sizing:border-box}
+img{max-width:90px;max-height:90px;object-fit:contain}
+.small{font-size:13px;color:#666}
+.error{color:#b00020}.success{color:#087f23}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <h1>Kho đồ</h1>
+  <div class="card">
+    <label>Tên tài khoản Forumvi</label>
+    <input id="username" placeholder="Ví dụ: Admin">
+    <br><br>
+    <button id="loadBtn">XEM KHO</button>
+  </div>
+  <div id="inventory" class="grid"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/12.17.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyATAyA0P_epVEm2NloWe6EQirGE-ENRerY",
+  authDomain: "gunnyshop-fa0ce.firebaseapp.com",
+  projectId: "gunnyshop-fa0ce",
+  storageBucket: "gunnyshop-fa0ce.firebasestorage.app",
+  messagingSenderId: "201890914947",
+  appId: "1:201890914947:web:e8d3291543f17fd728b1b6"
+};
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const usernameInput = document.getElementById("username");
+if (typeof _userdata !== "undefined" && _userdata.session_logged_in) {
+  usernameInput.value = String(_userdata.username || "");
+}
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+}
+async function loadInventory() {
+  const username = usernameInput.value.trim();
+  const box = document.getElementById("inventory");
+  if (!username) return alert("Hãy nhập tên tài khoản.");
+  box.innerHTML = "Đang tải...";
+  try {
+    const snap = await db.collection("inventory").doc(username).collection("items").get();
+    if (snap.empty) {
+      box.innerHTML = '<div class="card">Kho đồ trống.</div>';
+      return;
+    }
+    let html = "";
+    snap.forEach(doc => {
+      const item = doc.data();
+      html += `
+      <div class="card" style="text-align:center">
+        <img src="${esc(item.image)}" alt="${esc(item.name)}">
+        <h3>${esc(item.name)}</h3>
+        <p>Số lượng: <b>${Number(item.quantity || 1)}</b></p>
+      </div>`;
+    });
+    box.innerHTML = html;
+  } catch(e) {
+    box.innerHTML = '<div class="card error">'+esc(e.message)+'</div>';
+  }
+}
+document.getElementById("loadBtn").addEventListener("click", loadInventory);
+if (usernameInput.value) loadInventory();
+</script>
+</body>
+</html>

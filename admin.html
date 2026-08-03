@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<title>Quản lý đơn hàng</title>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;padding:20px;color:#222}
+.wrap{max-width:1100px;margin:auto}
+.card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+button{cursor:pointer;padding:9px 16px;border:0;border-radius:8px;background:#1976d2;color:#fff;font-weight:700}
+button:disabled{opacity:.6;cursor:not-allowed}
+input{padding:10px;border:1px solid #bbb;border-radius:8px;width:100%;box-sizing:border-box}
+img{max-width:90px;max-height:90px;object-fit:contain}
+.small{font-size:13px;color:#666}
+.error{color:#b00020}.success{color:#087f23}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <h1>Quản lý đơn hàng</h1>
+
+  <div id="loginBox" class="card">
+    <label>Email Firebase Admin</label>
+    <input id="email" type="email">
+    <br><br>
+    <label>Mật khẩu</label>
+    <input id="password" type="password">
+    <br><br>
+    <button id="loginBtn">ĐĂNG NHẬP</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="orders"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/12.17.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyATAyA0P_epVEm2NloWe6EQirGE-ENRerY",
+  authDomain: "gunnyshop-fa0ce.firebaseapp.com",
+  projectId: "gunnyshop-fa0ce",
+  storageBucket: "gunnyshop-fa0ce.firebasestorage.app",
+  messagingSenderId: "201890914947",
+  appId: "1:201890914947:web:e8d3291543f17fd728b1b6"
+};
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+const loginBox = document.getElementById("loginBox");
+const statusBox = document.getElementById("status");
+const ordersBox = document.getElementById("orders");
+
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+}
+
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+  } catch(e) {
+    alert("Đăng nhập thất bại: " + (e.message || e));
+  }
+});
+
+document.addEventListener("click", async (e) => {
+  if (e.target.id === "logoutBtn") {
+    await auth.signOut();
+    return;
+  }
+  const btn = e.target.closest(".approve-btn");
+  if (!btn) return;
+  await approveOrder(btn.dataset.id, btn);
+});
+
+auth.onAuthStateChanged(user => {
+  if (!user) {
+    loginBox.style.display = "block";
+    statusBox.innerHTML = "";
+    ordersBox.innerHTML = "";
+    return;
+  }
+  loginBox.style.display = "none";
+  statusBox.innerHTML = `<div class="card">Đã đăng nhập: <b>${esc(user.email)}</b>
+    <button id="logoutBtn" style="margin-left:10px">ĐĂNG XUẤT</button></div>`;
+  loadOrders();
+});
+
+async function loadOrders() {
+  ordersBox.innerHTML = '<div class="card">Đang tải đơn...</div>';
+  try {
+    const snap = await db.collection("orders").where("status","==","pending").get();
+    if (snap.empty) {
+      ordersBox.innerHTML = '<div class="card">Không có đơn chờ duyệt.</div>';
+      return;
+    }
+    let html = "";
+    snap.forEach(doc => {
+      const o = doc.data();
+      html += `<div class="card">
+        <b>Người mua:</b> ${esc(o.username)}<br>
+        <b>Vật phẩm:</b> ${esc(o.itemName)}<br>
+        <b>Giá:</b> ${Number(o.price || 0)} Coin<br><br>
+        <button class="approve-btn" data-id="${esc(doc.id)}">DUYỆT</button>
+      </div>`;
+    });
+    ordersBox.innerHTML = html;
+  } catch(e) {
+    ordersBox.innerHTML = '<div class="card error">'+esc(e.message)+'</div>';
+  }
+}
+
+async function approveOrder(orderId, btn) {
+  if (!auth.currentUser) return alert("Bạn chưa đăng nhập.");
+  if (!confirm("Duyệt đơn này?")) return;
+
+  btn.disabled = true;
+  btn.textContent = "ĐANG DUYỆT...";
+
+  try {
+    await db.runTransaction(async tx => {
+      const orderRef = db.collection("orders").doc(orderId);
+      const orderSnap = await tx.get(orderRef);
+      if (!orderSnap.exists) throw new Error("Không tìm thấy đơn.");
+      const order = orderSnap.data();
+      if (order.status !== "pending") throw new Error("Đơn đã được xử lý.");
+
+      const username = String(order.username || "");
+      const itemId = String(order.itemId || "");
+      if (!username || !itemId) throw new Error("Đơn thiếu dữ liệu.");
+
+      const userRef = db.collection("users").doc(username);
+      const itemRef = db.collection("items").doc(itemId);
+      const invRef = db.collection("inventory").doc(username).collection("items").doc(itemId);
+
+      const userSnap = await tx.get(userRef);
+      const itemSnap = await tx.get(itemRef);
+      const invSnap = await tx.get(invRef);
+
+      if (!userSnap.exists) throw new Error("Không tìm thấy user: " + username);
+      if (!itemSnap.exists) throw new Error("Không tìm thấy vật phẩm.");
+
+      const user = userSnap.data();
+      const item = itemSnap.data();
+      const coin = Number(user.coin || 0);
+      const price = Number(item.price || 0);
+
+      if (!Number.isFinite(price) || price <= 0) throw new Error("Giá không hợp lệ.");
+      if (coin < price) throw new Error("Không đủ Coin. Hiện có " + coin + ", cần " + price + ".");
+
+      tx.update(userRef, { coin: coin - price });
+
+      if (invSnap.exists) {
+        tx.update(invRef, {
+          quantity: Number(invSnap.data().quantity || 1) + 1,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        tx.set(invRef, {
+          itemId,
+          name: String(item.name || ""),
+          image: String(item.image || ""),
+          type: String(item.type || ""),
+          quantity: 1,
+          receiveTime: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      tx.update(orderRef, {
+        status: "approved",
+        approvedBy: String(auth.currentUser.email || ""),
+        approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        finalPrice: price
+      });
+    });
+
+    alert("Đã trừ Coin và cấp vật phẩm.");
+    loadOrders();
+  } catch(e) {
+    alert("Không thể duyệt: " + (e.message || e));
+    btn.disabled = false;
+    btn.textContent = "DUYỆT";
+  }
+}
+</script>
+</body>
+</html>

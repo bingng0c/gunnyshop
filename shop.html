@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<title>GunnyShop</title>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;padding:20px;color:#222}
+.wrap{max-width:1100px;margin:auto}
+.card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+button{cursor:pointer;padding:9px 16px;border:0;border-radius:8px;background:#1976d2;color:#fff;font-weight:700}
+button:disabled{opacity:.6;cursor:not-allowed}
+input{padding:10px;border:1px solid #bbb;border-radius:8px;width:100%;box-sizing:border-box}
+img{max-width:90px;max-height:90px;object-fit:contain}
+.small{font-size:13px;color:#666}
+.error{color:#b00020}.success{color:#087f23}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <h1>GunnyShop</h1>
+  <div class="card">
+    <label>Tên tài khoản Forumvi</label>
+    <input id="username" placeholder="Ví dụ: Admin">
+    <p class="small">Khi nhúng vào Forumvi, có thể tự điền bằng _userdata.username.</p>
+  </div>
+  <div id="shop" class="grid">Đang tải...</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/12.17.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyATAyA0P_epVEm2NloWe6EQirGE-ENRerY",
+  authDomain: "gunnyshop-fa0ce.firebaseapp.com",
+  projectId: "gunnyshop-fa0ce",
+  storageBucket: "gunnyshop-fa0ce.firebasestorage.app",
+  messagingSenderId: "201890914947",
+  appId: "1:201890914947:web:e8d3291543f17fd728b1b6"
+};
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const usernameInput = document.getElementById("username");
+if (typeof _userdata !== "undefined" && _userdata.session_logged_in) {
+  usernameInput.value = String(_userdata.username || "");
+}
+
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+}
+
+async function loadShop() {
+  const box = document.getElementById("shop");
+  try {
+    const snap = await db.collection("items").get();
+    if (snap.empty) {
+      box.innerHTML = '<div class="card">Shop chưa có vật phẩm.</div>';
+      return;
+    }
+    let html = "";
+    snap.forEach(doc => {
+      const item = doc.data();
+      html += `
+      <div class="card">
+        <div style="text-align:center">
+          <img src="${esc(item.image)}" alt="${esc(item.name)}">
+          <h3>${esc(item.name)}</h3>
+          <p>Giá: <b>${Number(item.price || 0)} Coin</b></p>
+          <button class="buy-btn" data-id="${esc(doc.id)}">MUA</button>
+        </div>
+      </div>`;
+    });
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="card error">Lỗi tải shop: '+esc(e.message)+'</div>';
+  }
+}
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".buy-btn");
+  if (!btn) return;
+  const username = usernameInput.value.trim();
+  if (!username) return alert("Hãy nhập tên tài khoản Forumvi.");
+
+  btn.disabled = true;
+  try {
+    const itemId = btn.dataset.id;
+    const [userDoc, itemDoc] = await Promise.all([
+      db.collection("users").doc(username).get(),
+      db.collection("items").doc(itemId).get()
+    ]);
+
+    if (!userDoc.exists) throw new Error("Chưa có tài khoản Coin: " + username);
+    if (!itemDoc.exists) throw new Error("Không tìm thấy vật phẩm.");
+
+    const user = userDoc.data();
+    const item = itemDoc.data();
+    const coin = Number(user.coin || 0);
+    const price = Number(item.price || 0);
+
+    if (coin < price) throw new Error("Không đủ Coin. Hiện có " + coin + ", cần " + price + ".");
+
+    await db.collection("orders").add({
+      username,
+      itemId,
+      itemName: String(item.name || ""),
+      image: String(item.image || ""),
+      type: String(item.type || ""),
+      price,
+      status: "pending",
+      time: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    alert("Đã gửi đơn mua thành công!");
+  } catch (e) {
+    alert(e.message || e);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+loadShop();
+</script>
+</body>
+</html>
