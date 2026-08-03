@@ -131,21 +131,17 @@ html+=`
 
 <div class="box">
 
-
 <img src="${item.image}">
-
 
 <h3>
 ${item.name}
 </h3>
 
-
 <p>
 Số lượng:
-<b>
-${item.quantity || 1}
-</b>
+<b>${item.quantity || 1}</b>
 </p>
+
 
 <button onclick="equipItem('${doc.id}')">
 TRANG BỊ
@@ -155,9 +151,6 @@ TRANG BỊ
 </div>
 
 `;
-
-
-});
 
 
 box.innerHTML=html;
